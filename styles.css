@@ -28,6 +28,57 @@ body {
   overflow: hidden;
 }
 
+.app-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: rgba(13, 13, 15, 1);
+}
+
+.app-loader.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.app-loader-card {
+  width: min(90vw, 380px);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.app-loader-title {
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+}
+
+.app-loader-track {
+  width: 100%;
+  height: 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #1f1f23;
+  overflow: hidden;
+}
+
+.app-loader-bar {
+  display: block;
+  width: 0%;
+  height: 100%;
+  background: var(--accent);
+  transition: width 160ms ease;
+}
+
+.app-loader-text {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
 .control-row button,
 .compare-range,
 .compare-captions select,

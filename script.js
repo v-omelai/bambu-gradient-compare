@@ -38,6 +38,9 @@ const compareSection = document.querySelector(".compare-section");
 const layerRange = document.getElementById("layerRange");
 const layerStripWrap = document.querySelector(".layer-strip-wrap");
 const layerMaxTop = document.getElementById("layerMaxTop");
+const appLoader = document.getElementById("appLoader");
+const appLoaderBar = document.getElementById("appLoaderBar");
+const appLoaderText = document.getElementById("appLoaderText");
 
 let compareThumbPx = 18;
 let layerThumbPx = 16;
@@ -63,6 +66,52 @@ const videoColors = {
 
 function buildVideoUrl(fileName) {
   return `${VIDEO_BASE_URL}${encodeURIComponent(fileName)}`;
+}
+
+function getAllVideoFiles() {
+  const files = new Set();
+  for (const option of videoSelectA.options) files.add(option.value);
+  for (const option of videoSelectB.options) files.add(option.value);
+  return Array.from(files);
+}
+
+function setUiLocked(locked) {
+  videoSelectA.disabled = locked;
+  videoSelectB.disabled = locked;
+  compareRange.disabled = locked;
+  layerRange.disabled = locked;
+  playPauseBtn.disabled = locked;
+  stopBtn.disabled = locked;
+}
+
+function updateLoaderProgress(done, total) {
+  const safeTotal = Math.max(1, total);
+  const pct = Math.round((done / safeTotal) * 100);
+  appLoaderBar.style.width = `${pct}%`;
+  appLoaderText.textContent = `${pct}% (${done}/${safeTotal})`;
+}
+
+function hideLoader() {
+  appLoader.classList.add("is-hidden");
+}
+
+function warmVideoMetadata(fileName) {
+  return new Promise((resolve) => {
+    const probe = document.createElement("video");
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    probe.preload = "metadata";
+    probe.muted = true;
+    probe.src = buildVideoUrl(fileName);
+    probe.addEventListener("loadedmetadata", finish, { once: true });
+    probe.addEventListener("error", finish, { once: true });
+    // Prevent hanging forever on poor networks.
+    setTimeout(finish, 7000);
+  });
 }
 
 function setOverlayWidth(percent) {
@@ -180,6 +229,7 @@ setOverlayWidth(Number(compareRange.value));
 
 stopBtn.innerHTML = "<span class=\"stop-icon\">■</span>";
 stopBtn.setAttribute("aria-label", "Stop");
+setUiLocked(true);
 
 function switchVideo(targetVideo, sourcePath) {
   const wasPlaying = !videoA.paused || !videoB.paused;
@@ -271,3 +321,22 @@ window.addEventListener("resize", () => {
 syncStripWrapHeight();
 updateLayerTrail();
 updateButtonsState();
+
+async function bootstrapPreload() {
+  const files = getAllVideoFiles();
+  const total = files.length;
+  let done = 0;
+  updateLoaderProgress(done, total);
+
+  for (const file of files) {
+    await warmVideoMetadata(file);
+    done += 1;
+    updateLoaderProgress(done, total);
+  }
+
+  hideLoader();
+  setUiLocked(false);
+  updateButtonsState();
+}
+
+bootstrapPreload();

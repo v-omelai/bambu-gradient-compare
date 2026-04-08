@@ -7,6 +7,15 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
+  <div id="appLoader" class="app-loader" role="status" aria-live="polite">
+    <div class="app-loader-card">
+      <div class="app-loader-title">Preparing videos...</div>
+      <div class="app-loader-track" aria-hidden="true">
+        <span id="appLoaderBar" class="app-loader-bar"></span>
+      </div>
+      <div id="appLoaderText" class="app-loader-text">0%</div>
+    </div>
+  </div>
   <main class="layout">
     <section class="compare-section">
       <div class="compare-captions">
