@@ -4,10 +4,18 @@ const layerStripMobileMql = window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px
 
 const SYNC_DRIFT_SEC = 0.08;
 
+function getVideoBaseUrl() {
+  const [owner] = window.location.hostname.split(".");
+  const repo = window.location.pathname.split("/").filter(Boolean)[0];
+  return `https://github.com/${owner}/${repo}/raw/main/assets/`;
+}
+
+const VIDEO_BASE_URL = getVideoBaseUrl();
+
 const config = {
   totalLayers: 2233,
-  videoA: "assets/Cotton Candy Cloud.mp4",
-  videoB: "assets/Blueberry Bubblegum.mp4"
+  videoA: "Cotton Candy Cloud.mp4",
+  videoB: "Blueberry Bubblegum.mp4"
 };
 
 function clamp(n, lo, hi) {
@@ -43,15 +51,19 @@ function syncRangeThumbMetrics() {
 }
 
 const videoColors = {
-  "assets/Arctic Whisper.mp4": ["#9CDBD9", "#FFFFFF"],
-  "assets/Solar Breeze.mp4": ["#E94B3C", "#FFFFFF"],
-  "assets/Ocean to Meadow.mp4": ["#307FE2", "#54FF9B"],
-  "assets/Cotton Candy Cloud.mp4": ["#E7C1D5", "#8EC9E9"],
-  "assets/Blueberry Bubblegum.mp4": ["#6FCAEF", "#8573DD"],
-  "assets/Mint Lime.mp4": ["#B6FF43", "#4EC939"],
-  "assets/Pink Citrus.mp4": ["#F78F77", "#E4505A"],
-  "assets/Dusk Glare.mp4": ["#ED9558", "#CE4406"]
+  "Arctic Whisper.mp4": ["#9CDBD9", "#FFFFFF"],
+  "Solar Breeze.mp4": ["#E94B3C", "#FFFFFF"],
+  "Ocean to Meadow.mp4": ["#307FE2", "#54FF9B"],
+  "Cotton Candy Cloud.mp4": ["#E7C1D5", "#8EC9E9"],
+  "Blueberry Bubblegum.mp4": ["#6FCAEF", "#8573DD"],
+  "Mint Lime.mp4": ["#B6FF43", "#4EC939"],
+  "Pink Citrus.mp4": ["#F78F77", "#E4505A"],
+  "Dusk Glare.mp4": ["#ED9558", "#CE4406"]
 };
+
+function buildVideoUrl(fileName) {
+  return `${VIDEO_BASE_URL}${encodeURIComponent(fileName)}`;
+}
 
 function setOverlayWidth(percent) {
   const clamped = clamp(percent, 0, 100);
@@ -153,8 +165,8 @@ function updateButtonsState() {
   stopBtn.disabled = getCurrentLayer() <= 1;
 }
 
-videoA.src = encodeURI(config.videoA);
-videoB.src = encodeURI(config.videoB);
+videoA.src = buildVideoUrl(config.videoA);
+videoB.src = buildVideoUrl(config.videoB);
 videoSelectA.value = config.videoA;
 videoSelectB.value = config.videoB;
 setSwatchGradient(swatchA, config.videoA);
@@ -172,7 +184,7 @@ stopBtn.setAttribute("aria-label", "Stop");
 function switchVideo(targetVideo, sourcePath) {
   const wasPlaying = !videoA.paused || !videoB.paused;
   const anchorTime = videoA.currentTime || videoB.currentTime || 0;
-  targetVideo.src = encodeURI(sourcePath);
+  targetVideo.src = buildVideoUrl(sourcePath);
   targetVideo.load();
   targetVideo.addEventListener("loadedmetadata", () => {
     const maxTime = Math.max(0, (targetVideo.duration || 0) - 0.01);
