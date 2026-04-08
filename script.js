@@ -25,6 +25,35 @@ const config = {
   videoB: "Blueberry Bubblegum.mp4"
 };
 
+/** Timeline cap: 1:33 — longer files play only this much; shorter files unchanged. */
+const PLAYBACK_MAX_SEC = 60 + 33;
+
+function getPlaybackLimit() {
+  const a = Number(videoA.duration);
+  const b = Number(videoB.duration);
+  let limit = PLAYBACK_MAX_SEC;
+  if (Number.isFinite(a) && a > 0) limit = Math.min(limit, a);
+  if (Number.isFinite(b) && b > 0) limit = Math.min(limit, b);
+  return Math.max(0, limit);
+}
+
+function clampTimelineTime(t) {
+  const lim = getPlaybackLimit();
+  if (!lim) return t;
+  return clamp(t, 0, Math.max(0, lim - 0.01));
+}
+
+/** True when Play should rewind to 0 (at cap or native ended). */
+function shouldRestartPlaybackFromStart() {
+  if (videoA.ended || videoB.ended) return true;
+  const lim = getPlaybackLimit();
+  if (!lim) return false;
+  const tail = 0.06;
+  return (
+    videoA.currentTime >= lim - tail && videoB.currentTime >= lim - tail
+  );
+}
+
 function clamp(n, lo, hi) {
   return Math.min(hi, Math.max(lo, n));
 }
@@ -362,8 +391,10 @@ function switchVideo(targetVideo, sourcePath) {
   targetVideo.src = resolveVideoSrc(sourcePath);
   targetVideo.load();
   targetVideo.addEventListener("loadedmetadata", () => {
-    const maxTime = Math.max(0, (targetVideo.duration || 0) - 0.01);
-    targetVideo.currentTime = Math.min(anchorTime, maxTime);
+    const lim = getPlaybackLimit();
+    const rawMax = Math.max(0, (targetVideo.duration || 0) - 0.01);
+    const maxTime = lim > 0 ? Math.min(rawMax, lim) : rawMax;
+    targetVideo.currentTime = clampTimelineTime(Math.min(anchorTime, maxTime));
     if (wasPlaying) {
       videoA.play();
       videoB.play();
@@ -374,10 +405,11 @@ function switchVideo(targetVideo, sourcePath) {
 
 layerRange.addEventListener("input", () => {
   updateLayerTrail();
-  if (!videoA.duration || videoA.duration <= 0) return;
+  const lim = getPlaybackLimit();
+  if (!lim || lim <= 0) return;
   const targetLayer = Number(layerRange.value);
   const progress = (targetLayer - 1) / (config.totalLayers - 1);
-  const targetTime = progress * videoA.duration;
+  const targetTime = progress * lim;
   videoA.currentTime = targetTime;
   videoB.currentTime = targetTime;
   updateButtonsState();
@@ -403,6 +435,12 @@ playPauseBtn.addEventListener("click", () => {
     videoB.pause();
     return;
   }
+  if (shouldRestartPlaybackFromStart()) {
+    videoA.currentTime = 0;
+    videoB.currentTime = 0;
+    applyLayerByTime(0, getPlaybackLimit() || videoA.duration);
+    updateButtonsState();
+  }
   Promise.allSettled([videoA.play(), videoB.play()]);
 });
 
@@ -411,7 +449,7 @@ stopBtn.addEventListener("click", () => {
   videoB.pause();
   videoA.currentTime = 0;
   videoB.currentTime = 0;
-  applyLayerByTime(0, videoA.duration);
+  applyLayerByTime(0, getPlaybackLimit() || videoA.duration);
   updateButtonsState();
 });
 
@@ -423,17 +461,31 @@ videoB.addEventListener("pause", () => mirrorPauseFrom(videoB));
 videoA.addEventListener("seeking", () => syncVideoTime(videoA, videoB));
 videoB.addEventListener("seeking", () => syncVideoTime(videoB, videoA));
 videoA.addEventListener("timeupdate", () => {
+  const lim = getPlaybackLimit();
+  if (lim > 0 && videoA.currentTime > lim) {
+    videoA.currentTime = lim;
+    videoB.currentTime = lim;
+    videoA.pause();
+    videoB.pause();
+  }
   syncVideoTime(videoA, videoB);
-  applyLayerByTime(videoA.currentTime, videoA.duration);
+  applyLayerByTime(videoA.currentTime, lim || videoA.duration);
   updateButtonsState();
 });
 videoB.addEventListener("timeupdate", () => {
+  const lim = getPlaybackLimit();
+  if (lim > 0 && videoB.currentTime > lim) {
+    videoA.currentTime = lim;
+    videoB.currentTime = lim;
+    videoA.pause();
+    videoB.pause();
+  }
   syncVideoTime(videoB, videoA);
   updateButtonsState();
 });
 
 videoA.addEventListener("loadedmetadata", () => {
-  applyLayerByTime(videoA.currentTime, videoA.duration);
+  applyLayerByTime(videoA.currentTime, getPlaybackLimit() || videoA.duration);
   updateButtonsState();
   syncStripWrapHeight();
 });
