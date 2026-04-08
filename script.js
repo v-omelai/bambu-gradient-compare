@@ -7,7 +7,7 @@ const SYNC_DRIFT_SEC = 0.08;
 function getVideoBaseUrl() {
   const [owner] = window.location.hostname.split(".");
   const repo = window.location.pathname.split("/").filter(Boolean)[0];
-  return `https://github.com/${owner}/${repo}/raw/main/assets/`;
+  return `https://media.githubusercontent.com/media/${owner}/${repo}/main/assets/`;
 }
 
 const VIDEO_BASE_URL = getVideoBaseUrl();
