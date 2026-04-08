@@ -73,11 +73,36 @@ body {
   transition: width 160ms ease;
 }
 
+
 .app-loader-text {
   margin-top: 8px;
   font-size: 0.82rem;
   color: var(--muted);
+  line-height: 1.35;
 }
+
+.app-loader-text.is-error {
+  color: #ff5c5c;
+}
+
+.app-loader-retry {
+  margin-top: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #414147;
+  background: #2d2d31;
+  color: #00ae42;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.app-loader-retry:hover,
+.app-loader-retry:focus-visible {
+  border-color: #5a5a62;
+  outline: none;
+}
+
 
 .control-row button,
 .compare-range,

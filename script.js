@@ -11,6 +11,11 @@ function getVideoBaseUrl() {
 }
 
 const VIDEO_BASE_URL = getVideoBaseUrl();
+const LOADER_MESSAGES = {
+  downloading: (pct, done, total) => `Downloading videos... ${pct}% (${done}/${total})`,
+  failed: (failedPct, failed, total) => `Download failed for ${failedPct}% (${failed}/${total})`,
+  unexpected: "Unexpected preload error"
+};
 
 const config = {
   totalLayers: 2233,
@@ -41,6 +46,16 @@ const layerMaxTop = document.getElementById("layerMaxTop");
 const appLoader = document.getElementById("appLoader");
 const appLoaderBar = document.getElementById("appLoaderBar");
 const appLoaderText = document.getElementById("appLoaderText");
+const appLoaderRetry = document.getElementById("appLoaderRetry");
+const preloadedVideoUrls = new Map();
+let preloadInFlight = false;
+
+function clearPreloadedVideos() {
+  for (const url of preloadedVideoUrls.values()) {
+    URL.revokeObjectURL(url);
+  }
+  preloadedVideoUrls.clear();
+}
 
 let compareThumbPx = 18;
 let layerThumbPx = 16;
@@ -88,30 +103,42 @@ function updateLoaderProgress(done, total) {
   const safeTotal = Math.max(1, total);
   const pct = Math.round((done / safeTotal) * 100);
   appLoaderBar.style.width = `${pct}%`;
-  appLoaderText.textContent = `${pct}% (${done}/${safeTotal})`;
+  appLoaderText.textContent = LOADER_MESSAGES.downloading(pct, done, safeTotal);
 }
 
 function hideLoader() {
   appLoader.classList.add("is-hidden");
 }
 
-function warmVideoMetadata(fileName) {
-  return new Promise((resolve) => {
-    const probe = document.createElement("video");
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
-    probe.preload = "metadata";
-    probe.muted = true;
-    probe.src = buildVideoUrl(fileName);
-    probe.addEventListener("loadedmetadata", finish, { once: true });
-    probe.addEventListener("error", finish, { once: true });
-    // Prevent hanging forever on poor networks.
-    setTimeout(finish, 7000);
-  });
+function setLoaderStateLoading() {
+  appLoaderText.classList.remove("is-error");
+  appLoaderRetry.hidden = true;
+}
+
+function setLoaderStateError(message) {
+  appLoaderText.classList.add("is-error");
+  appLoaderText.textContent = message;
+  appLoaderRetry.hidden = false;
+}
+
+async function preloadVideoFully(fileName) {
+  const response = await fetch(buildVideoUrl(fileName), { cache: "force-cache" });
+  if (!response.ok) throw new Error(`Failed to download ${fileName}`);
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const previousUrl = preloadedVideoUrls.get(fileName);
+  if (previousUrl) {
+    URL.revokeObjectURL(previousUrl);
+  }
+  preloadedVideoUrls.set(fileName, objectUrl);
+}
+
+function resolveVideoSrc(fileName) {
+  const url = preloadedVideoUrls.get(fileName);
+  if (!url) {
+    throw new Error(`Video is not preloaded: ${fileName}`);
+  }
+  return url;
 }
 
 function setOverlayWidth(percent) {
@@ -214,8 +241,6 @@ function updateButtonsState() {
   stopBtn.disabled = getCurrentLayer() <= 1;
 }
 
-videoA.src = buildVideoUrl(config.videoA);
-videoB.src = buildVideoUrl(config.videoB);
 videoSelectA.value = config.videoA;
 videoSelectB.value = config.videoB;
 setSwatchGradient(swatchA, config.videoA);
@@ -234,7 +259,7 @@ setUiLocked(true);
 function switchVideo(targetVideo, sourcePath) {
   const wasPlaying = !videoA.paused || !videoB.paused;
   const anchorTime = videoA.currentTime || videoB.currentTime || 0;
-  targetVideo.src = buildVideoUrl(sourcePath);
+  targetVideo.src = resolveVideoSrc(sourcePath);
   targetVideo.load();
   targetVideo.addEventListener("loadedmetadata", () => {
     const maxTime = Math.max(0, (targetVideo.duration || 0) - 0.01);
@@ -323,20 +348,57 @@ updateLayerTrail();
 updateButtonsState();
 
 async function bootstrapPreload() {
+  if (preloadInFlight) return;
+  preloadInFlight = true;
+  clearPreloadedVideos();
+  setLoaderStateLoading();
   const files = getAllVideoFiles();
   const total = files.length;
   let done = 0;
   updateLoaderProgress(done, total);
 
-  for (const file of files) {
-    await warmVideoMetadata(file);
-    done += 1;
-    updateLoaderProgress(done, total);
-  }
+  try {
+    const results = await Promise.allSettled(
+      files.map((file) =>
+        preloadVideoFully(file).finally(() => {
+          done += 1;
+          updateLoaderProgress(done, total);
+        })
+      )
+    );
 
-  hideLoader();
-  setUiLocked(false);
-  updateButtonsState();
+    const failed = results
+      .map((res, index) => (res.status === "rejected" ? files[index] : null))
+      .filter(Boolean);
+
+    if (failed.length > 0) {
+      const failedPct = Math.round((failed.length / Math.max(1, total)) * 100);
+      setLoaderStateError(LOADER_MESSAGES.failed(failedPct, failed.length, total));
+      return;
+    }
+
+    videoA.src = resolveVideoSrc(config.videoA);
+    videoB.src = resolveVideoSrc(config.videoB);
+    videoA.load();
+    videoB.load();
+
+    hideLoader();
+    setUiLocked(false);
+    updateButtonsState();
+  } catch (error) {
+    setLoaderStateError(LOADER_MESSAGES.unexpected);
+    console.error(error);
+  } finally {
+    preloadInFlight = false;
+  }
 }
+
+appLoaderRetry.addEventListener("click", () => {
+  bootstrapPreload();
+});
+
+window.addEventListener("beforeunload", () => {
+  clearPreloadedVideos();
+});
 
 bootstrapPreload();
