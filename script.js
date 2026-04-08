@@ -47,7 +47,8 @@ const layerStripWrap = document.querySelector(".layer-strip-wrap");
 const layerMaxTop = document.getElementById("layerMaxTop");
 const appLoader = document.getElementById("appLoader");
 const appLoaderBar = document.getElementById("appLoaderBar");
-const appLoaderText = document.getElementById("appLoaderText");
+const appLoaderStatus = document.getElementById("appLoaderStatus");
+const appLoaderBytes = document.getElementById("appLoaderBytes");
 const appLoaderRetry = document.getElementById("appLoaderRetry");
 const preloadedVideoUrls = new Map();
 let preloadInFlight = false;
@@ -71,14 +72,10 @@ function syncRangeThumbMetrics() {
 }
 
 const videoColors = {
-  "Arctic Whisper.mp4": ["#9CDBD9", "#FFFFFF"],
   "Solar Breeze.mp4": ["#E94B3C", "#FFFFFF"],
   "Ocean to Meadow.mp4": ["#307FE2", "#54FF9B"],
   "Cotton Candy Cloud.mp4": ["#E7C1D5", "#8EC9E9"],
-  "Blueberry Bubblegum.mp4": ["#6FCAEF", "#8573DD"],
-  "Mint Lime.mp4": ["#B6FF43", "#4EC939"],
-  "Pink Citrus.mp4": ["#F78F77", "#E4505A"],
-  "Dusk Glare.mp4": ["#ED9558", "#CE4406"]
+  "Blueberry Bubblegum.mp4": ["#6FCAEF", "#8573DD"]
 };
 
 function buildVideoUrl(fileName) {
@@ -101,11 +98,26 @@ function setUiLocked(locked) {
   stopBtn.disabled = locked;
 }
 
-function updateLoaderProgress(done, total) {
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let idx = 0;
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024;
+    idx += 1;
+  }
+  const digits = idx === 0 ? 0 : 1;
+  return `${value.toFixed(digits)} ${units[idx]}`;
+}
+
+function updateLoaderProgress(done, total, downloadedBytes = 0) {
   const safeTotal = Math.max(1, total);
   const pct = Math.round((done / safeTotal) * 100);
+  const bytesText = `${formatBytes(downloadedBytes)}`;
   appLoaderBar.style.width = `${pct}%`;
-  appLoaderText.textContent = LOADER_MESSAGES.downloading(pct, done, safeTotal);
+  appLoaderStatus.textContent = LOADER_MESSAGES.downloading(pct, done, safeTotal);
+  appLoaderBytes.textContent = bytesText;
 }
 
 function hideLoader() {
@@ -113,17 +125,19 @@ function hideLoader() {
 }
 
 function setLoaderStateLoading() {
-  appLoaderText.classList.remove("is-error");
+  appLoaderStatus.classList.remove("is-error");
+  appLoaderBytes.textContent = "";
   appLoaderRetry.hidden = true;
 }
 
 function setLoaderStateError(message) {
-  appLoaderText.classList.add("is-error");
-  appLoaderText.textContent = message;
+  appLoaderStatus.classList.add("is-error");
+  appLoaderStatus.textContent = message;
+  appLoaderBytes.textContent = "";
   appLoaderRetry.hidden = false;
 }
 
-async function preloadVideoFully(fileName, controller) {
+async function preloadVideoFully(fileName, controller, onChunk) {
   const timeoutId = setTimeout(() => controller.abort(), PRELOAD_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(buildVideoUrl(fileName), {
@@ -131,7 +145,22 @@ async function preloadVideoFully(fileName, controller) {
       signal: controller.signal
     });
     if (!response.ok) throw new Error(`Failed to download ${fileName} (${response.status})`);
-    const blob = await response.blob();
+
+    let blob;
+    if (response.body && response.body.getReader) {
+      const reader = response.body.getReader();
+      const chunks = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        if (onChunk) onChunk(fileName, value.byteLength);
+      }
+      blob = new Blob(chunks, { type: response.headers.get("content-type") || "video/mp4" });
+    } else {
+      blob = await response.blob();
+      if (onChunk) onChunk(fileName, blob.size);
+    }
     const objectUrl = URL.createObjectURL(blob);
     const previousUrl = preloadedVideoUrls.get(fileName);
     if (previousUrl) {
@@ -150,6 +179,8 @@ async function preloadAllVideos(files, onProgress) {
   let done = 0;
   let stopped = false;
   let firstFailureDone = null;
+  let downloadedBytes = 0;
+  const emitProgress = () => onProgress(done, downloadedBytes);
 
   const stopAll = () => {
     stopped = true;
@@ -169,10 +200,17 @@ async function preloadAllVideos(files, onProgress) {
       controllers.add(controller);
 
       try {
-        await preloadVideoFully(file, controller);
+        await preloadVideoFully(
+          file,
+          controller,
+          (_fileName, chunkBytes) => {
+            downloadedBytes += chunkBytes;
+            emitProgress();
+          }
+        );
         if (stopped) return;
         done += 1;
-        onProgress(done);
+        emitProgress();
       } catch (error) {
         if (!stopped) {
           firstFailureDone = done;
@@ -239,6 +277,21 @@ function syncVideoTime(source, target) {
   if (Math.abs(target.currentTime - source.currentTime) > SYNC_DRIFT_SEC) {
     target.currentTime = source.currentTime;
   }
+}
+
+function getSharedDuration() {
+  const a = Number(videoA.duration);
+  const b = Number(videoB.duration);
+  if (!Number.isFinite(a) && !Number.isFinite(b)) return 0;
+  if (!Number.isFinite(a)) return Math.max(0, b);
+  if (!Number.isFinite(b)) return Math.max(0, a);
+  return Math.max(0, Math.min(a, b));
+}
+
+function syncToSharedEnd() {
+  const end = Math.max(0, getSharedDuration() - 0.01);
+  videoA.currentTime = end;
+  videoB.currentTime = end;
 }
 
 function mirrorPlayFrom(primary) {
@@ -336,10 +389,11 @@ function switchVideo(targetVideo, sourcePath) {
 
 layerRange.addEventListener("input", () => {
   updateLayerTrail();
-  if (!videoA.duration || videoA.duration <= 0) return;
+  const sharedDuration = getSharedDuration();
+  if (!sharedDuration || sharedDuration <= 0) return;
   const targetLayer = Number(layerRange.value);
   const progress = (targetLayer - 1) / (config.totalLayers - 1);
-  const targetTime = progress * videoA.duration;
+  const targetTime = progress * sharedDuration;
   videoA.currentTime = targetTime;
   videoB.currentTime = targetTime;
   updateButtonsState();
@@ -373,7 +427,7 @@ stopBtn.addEventListener("click", () => {
   videoB.pause();
   videoA.currentTime = 0;
   videoB.currentTime = 0;
-  applyLayerByTime(0, videoA.duration);
+  applyLayerByTime(0, getSharedDuration());
   updateButtonsState();
 });
 
@@ -385,16 +439,29 @@ videoB.addEventListener("pause", () => mirrorPauseFrom(videoB));
 videoA.addEventListener("seeking", () => syncVideoTime(videoA, videoB));
 videoB.addEventListener("seeking", () => syncVideoTime(videoB, videoA));
 videoA.addEventListener("timeupdate", () => {
-  applyLayerByTime(videoA.currentTime, videoA.duration);
+  syncVideoTime(videoA, videoB);
+  applyLayerByTime(videoA.currentTime, getSharedDuration());
   updateButtonsState();
 });
 videoB.addEventListener("timeupdate", () => {
   syncVideoTime(videoB, videoA);
   updateButtonsState();
 });
+videoA.addEventListener("ended", () => {
+  syncToSharedEnd();
+  videoA.pause();
+  videoB.pause();
+  updateButtonsState();
+});
+videoB.addEventListener("ended", () => {
+  syncToSharedEnd();
+  videoA.pause();
+  videoB.pause();
+  updateButtonsState();
+});
 
 videoA.addEventListener("loadedmetadata", () => {
-  applyLayerByTime(videoA.currentTime, videoA.duration);
+  applyLayerByTime(videoA.currentTime, getSharedDuration());
   updateButtonsState();
   syncStripWrapHeight();
 });
@@ -417,12 +484,12 @@ async function bootstrapPreload() {
   const files = getAllVideoFiles();
   const total = files.length;
   let done = 0;
-  updateLoaderProgress(done, total);
+  updateLoaderProgress(done, total, 0);
 
   try {
-    await preloadAllVideos(files, (completed) => {
+    await preloadAllVideos(files, (completed, downloadedBytes) => {
       done = completed;
-      updateLoaderProgress(done, total);
+      updateLoaderProgress(done, total, downloadedBytes);
     });
 
     videoA.src = resolveVideoSrc(config.videoA);

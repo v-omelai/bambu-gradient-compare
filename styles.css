@@ -79,9 +79,23 @@ body {
   font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.35;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
 }
 
-.app-loader-text.is-error {
+.app-loader-status {
+  text-align: left;
+}
+
+.app-loader-bytes {
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.app-loader-status.is-error {
   color: #ff5c5c;
 }
 
@@ -113,6 +127,7 @@ body {
 
 .layout {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   grid-template-columns: 1fr 86px;
   gap: 10px;
@@ -450,9 +465,16 @@ body {
 
 /* Stack layout; must match MOBILE_MAX_WIDTH in script.js */
 @media (max-width: 860px) {
+  body {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
   .layout {
     grid-template-columns: 1fr;
     align-items: stretch;
+    min-height: 100dvh;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   }
 
   .compare-section {
