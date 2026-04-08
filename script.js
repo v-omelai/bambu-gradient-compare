@@ -11,9 +11,10 @@ function getVideoBaseUrl() {
 }
 
 const VIDEO_BASE_URL = getVideoBaseUrl();
+const PRELOAD_REQUEST_TIMEOUT_MS = 60000;
 const LOADER_MESSAGES = {
   downloading: (pct, done, total) => `Downloading videos... ${pct}% (${done}/${total})`,
-  failed: (failedPct, failed, total) => `Download failed for ${failedPct}% (${failed}/${total})`,
+  failedAt: (pct, done, total) => `Download failed at ${pct}% (${done}/${total})`,
   unexpected: "Unexpected preload error"
 };
 
@@ -121,16 +122,24 @@ function setLoaderStateError(message) {
   appLoaderRetry.hidden = false;
 }
 
-async function preloadVideoFully(fileName) {
-  const response = await fetch(buildVideoUrl(fileName), { cache: "force-cache" });
-  if (!response.ok) throw new Error(`Failed to download ${fileName}`);
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const previousUrl = preloadedVideoUrls.get(fileName);
-  if (previousUrl) {
-    URL.revokeObjectURL(previousUrl);
+async function preloadVideoFully(fileName, controller) {
+  const timeoutId = setTimeout(() => controller.abort(), PRELOAD_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(buildVideoUrl(fileName), {
+      cache: "force-cache",
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`Failed to download ${fileName} (${response.status})`);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const previousUrl = preloadedVideoUrls.get(fileName);
+    if (previousUrl) {
+      URL.revokeObjectURL(previousUrl);
+    }
+    preloadedVideoUrls.set(fileName, objectUrl);
+  } finally {
+    clearTimeout(timeoutId);
   }
-  preloadedVideoUrls.set(fileName, objectUrl);
 }
 
 function resolveVideoSrc(fileName) {
@@ -355,27 +364,30 @@ async function bootstrapPreload() {
   const files = getAllVideoFiles();
   const total = files.length;
   let done = 0;
+  let failed = false;
   updateLoaderProgress(done, total);
 
   try {
-    const results = await Promise.allSettled(
-      files.map((file) =>
-        preloadVideoFully(file).finally(() => {
+    const controllers = files.map(() => new AbortController());
+    await Promise.all(
+      files.map((file, index) =>
+        preloadVideoFully(file, controllers[index]).then(() => {
+          if (failed) return;
           done += 1;
           updateLoaderProgress(done, total);
+        }).catch((error) => {
+          if (failed) return;
+          failed = true;
+          for (let i = 0; i < controllers.length; i += 1) {
+            if (i !== index) controllers[i].abort();
+          }
+          const failedStep = Math.min(done + 1, total);
+          const failedPct = Math.round((failedStep / Math.max(1, total)) * 100);
+          setLoaderStateError(LOADER_MESSAGES.failedAt(failedPct, failedStep, total));
+          throw error;
         })
       )
     );
-
-    const failed = results
-      .map((res, index) => (res.status === "rejected" ? files[index] : null))
-      .filter(Boolean);
-
-    if (failed.length > 0) {
-      const failedPct = Math.round((failed.length / Math.max(1, total)) * 100);
-      setLoaderStateError(LOADER_MESSAGES.failed(failedPct, failed.length, total));
-      return;
-    }
 
     videoA.src = resolveVideoSrc(config.videoA);
     videoB.src = resolveVideoSrc(config.videoB);
@@ -386,7 +398,9 @@ async function bootstrapPreload() {
     setUiLocked(false);
     updateButtonsState();
   } catch (error) {
-    setLoaderStateError(LOADER_MESSAGES.unexpected);
+    if (!failed) {
+      setLoaderStateError(LOADER_MESSAGES.unexpected);
+    }
     console.error(error);
   } finally {
     preloadInFlight = false;
