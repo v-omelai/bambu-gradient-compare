@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PLA Basic Gradient</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="layout">
+    <section class="compare-section">
+      <div class="compare-captions">
+        <select id="videoSelectA" aria-label="Left video">
+          <option value="assets/Cotton Candy Cloud.mp4">Cotton Candy Cloud</option>
+          <option value="assets/Blueberry Bubblegum.mp4">Blueberry Bubblegum</option>
+          <option value="assets/Pink Citrus.mp4">Pink Citrus</option>
+          <option value="assets/Mint Lime.mp4">Mint Lime</option>
+          <option value="assets/Dusk Glare.mp4">Dusk Glare</option>
+          <option value="assets/Ocean to Meadow.mp4">Ocean to Meadow</option>
+          <option value="assets/Arctic Whisper.mp4">Arctic Whisper</option>
+          <option value="assets/Solar Breeze.mp4">Solar Breeze</option>
+        </select>
+        <select id="videoSelectB" aria-label="Right video">
+          <option value="assets/Cotton Candy Cloud.mp4">Cotton Candy Cloud</option>
+          <option value="assets/Blueberry Bubblegum.mp4" selected>Blueberry Bubblegum</option>
+          <option value="assets/Pink Citrus.mp4">Pink Citrus</option>
+          <option value="assets/Mint Lime.mp4">Mint Lime</option>
+          <option value="assets/Dusk Glare.mp4">Dusk Glare</option>
+          <option value="assets/Ocean to Meadow.mp4">Ocean to Meadow</option>
+          <option value="assets/Arctic Whisper.mp4">Arctic Whisper</option>
+          <option value="assets/Solar Breeze.mp4">Solar Breeze</option>
+        </select>
+      </div>
+      <div class="compare-swatches">
+        <span id="swatchA" class="video-swatch" aria-hidden="true"></span>
+        <span id="swatchB" class="video-swatch" aria-hidden="true"></span>
+      </div>
+      <div class="compare-wrap" id="compareWrap">
+        <video id="videoA" class="video-base" preload="metadata" muted playsinline></video>
+        <div class="video-overlay" id="videoOverlay">
+          <video id="videoB" preload="metadata" muted playsinline></video>
+        </div>
+        <div class="compare-divider" id="compareDivider" aria-hidden="true"></div>
+      </div>
+      <input id="compareRange" class="compare-range" type="range" min="0" max="100" value="50" step="1">
+      <div class="control-row">
+        <button id="playPauseBtn" type="button">Play</button>
+        <button id="stopBtn" type="button">Stop</button>
+      </div>
+    </section>
+
+    <aside class="layer-strip-wrap">
+      <div class="layer-strip-title" id="layerMaxTop">2233</div>
+      <input
+        id="layerRange"
+        class="layer-strip"
+        type="range"
+        min="1"
+        max="2233"
+        value="1"
+        step="1"
+      >
+      <div class="layer-labels">
+        <span id="layerMinLabel">1</span>
+      </div>
+    </aside>
+  </main>
+
+  <script src="./script.js"></script>
+</body>
+</html>
