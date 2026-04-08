@@ -279,21 +279,6 @@ function syncVideoTime(source, target) {
   }
 }
 
-function getSharedDuration() {
-  const a = Number(videoA.duration);
-  const b = Number(videoB.duration);
-  if (!Number.isFinite(a) && !Number.isFinite(b)) return 0;
-  if (!Number.isFinite(a)) return Math.max(0, b);
-  if (!Number.isFinite(b)) return Math.max(0, a);
-  return Math.max(0, Math.min(a, b));
-}
-
-function syncToSharedEnd() {
-  const end = Math.max(0, getSharedDuration() - 0.01);
-  videoA.currentTime = end;
-  videoB.currentTime = end;
-}
-
 function mirrorPlayFrom(primary) {
   const other = primary === videoA ? videoB : videoA;
   if (other.paused) other.play();
@@ -389,11 +374,10 @@ function switchVideo(targetVideo, sourcePath) {
 
 layerRange.addEventListener("input", () => {
   updateLayerTrail();
-  const sharedDuration = getSharedDuration();
-  if (!sharedDuration || sharedDuration <= 0) return;
+  if (!videoA.duration || videoA.duration <= 0) return;
   const targetLayer = Number(layerRange.value);
   const progress = (targetLayer - 1) / (config.totalLayers - 1);
-  const targetTime = progress * sharedDuration;
+  const targetTime = progress * videoA.duration;
   videoA.currentTime = targetTime;
   videoB.currentTime = targetTime;
   updateButtonsState();
@@ -427,7 +411,7 @@ stopBtn.addEventListener("click", () => {
   videoB.pause();
   videoA.currentTime = 0;
   videoB.currentTime = 0;
-  applyLayerByTime(0, getSharedDuration());
+  applyLayerByTime(0, videoA.duration);
   updateButtonsState();
 });
 
@@ -440,28 +424,16 @@ videoA.addEventListener("seeking", () => syncVideoTime(videoA, videoB));
 videoB.addEventListener("seeking", () => syncVideoTime(videoB, videoA));
 videoA.addEventListener("timeupdate", () => {
   syncVideoTime(videoA, videoB);
-  applyLayerByTime(videoA.currentTime, getSharedDuration());
+  applyLayerByTime(videoA.currentTime, videoA.duration);
   updateButtonsState();
 });
 videoB.addEventListener("timeupdate", () => {
   syncVideoTime(videoB, videoA);
   updateButtonsState();
 });
-videoA.addEventListener("ended", () => {
-  syncToSharedEnd();
-  videoA.pause();
-  videoB.pause();
-  updateButtonsState();
-});
-videoB.addEventListener("ended", () => {
-  syncToSharedEnd();
-  videoA.pause();
-  videoB.pause();
-  updateButtonsState();
-});
 
 videoA.addEventListener("loadedmetadata", () => {
-  applyLayerByTime(videoA.currentTime, getSharedDuration());
+  applyLayerByTime(videoA.currentTime, videoA.duration);
   updateButtonsState();
   syncStripWrapHeight();
 });
