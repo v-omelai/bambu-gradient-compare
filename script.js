@@ -4,7 +4,17 @@ const layerStripMobileMql = window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px
 
 const SYNC_DRIFT_SEC = 0.08;
 
+function isLocalMediaHost() {
+  const { protocol, hostname } = window.location;
+  if (protocol === "file:") return true;
+  const h = hostname.toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+}
+
 function getVideoBaseUrl() {
+  if (isLocalMediaHost()) {
+    return new URL("./assets/", window.location.href).href;
+  }
   const [owner] = window.location.hostname.split(".");
   const repo = window.location.pathname.split("/").filter(Boolean)[0];
   return `https://media.githubusercontent.com/media/${owner}/${repo}/main/assets/`;
@@ -84,7 +94,9 @@ let preloadInFlight = false;
 
 function clearPreloadedVideos() {
   for (const url of preloadedVideoUrls.values()) {
-    URL.revokeObjectURL(url);
+    if (typeof url === "string" && url.startsWith("blob:")) {
+      URL.revokeObjectURL(url);
+    }
   }
   preloadedVideoUrls.clear();
 }
@@ -109,6 +121,15 @@ const videoColors = {
 
 function buildVideoUrl(fileName) {
   return `${VIDEO_BASE_URL}${encodeURIComponent(fileName)}`;
+}
+
+/** Same-origin file URL for ./assets/ (used when fetch() to file:// is blocked). */
+function buildDirectAssetVideoUrl(fileName) {
+  return new URL(`./assets/${encodeURIComponent(fileName)}`, window.location.href).href;
+}
+
+function shouldSkipFetchPreload() {
+  return window.location.protocol === "file:";
 }
 
 function getAllVideoFiles() {
@@ -262,6 +283,24 @@ async function preloadAllVideos(files, onProgress) {
   }
 }
 
+/** file:// cannot use fetch() on local files; register direct video URLs instead. */
+async function registerDirectFileVideos(files, onProgress) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    preloadedVideoUrls.set(file, buildDirectAssetVideoUrl(file));
+    onProgress(i + 1, 0);
+    await Promise.resolve();
+  }
+}
+
+async function preloadVideosForEnvironment(files, onProgress) {
+  if (shouldSkipFetchPreload()) {
+    await registerDirectFileVideos(files, onProgress);
+    return;
+  }
+  await preloadAllVideos(files, onProgress);
+}
+
 function resolveVideoSrc(fileName) {
   const url = preloadedVideoUrls.get(fileName);
   if (!url) {
@@ -291,13 +330,30 @@ function setSwatchGradient(targetElement, videoPath) {
   targetElement.style.background = `linear-gradient(135deg, ${from}, ${to})`;
 }
 
+function getLayerStripTargetHeightPx() {
+  const cs = getComputedStyle(compareSection);
+  const gapRaw = cs.rowGap || cs.gap || "8px";
+  const gapY = parseFloat(String(gapRaw).trim().split(/\s+/)[0]) || 8;
+  const captions = document.querySelector(".compare-captions");
+  const swatches = document.querySelector(".compare-swatches");
+  const row = document.querySelector(".control-row");
+  const parts = [captions, swatches, compareWrap, compareRange, row];
+  let total = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const el = parts[i];
+    if (!el) continue;
+    total += el.getBoundingClientRect().height;
+    if (i < parts.length - 1) total += gapY;
+  }
+  return Math.round(total);
+}
+
 function syncStripWrapHeight() {
   if (layerStripMobileMql.matches) {
     layerStripWrap.style.height = "";
     return;
   }
-  const compareHeight = compareSection.getBoundingClientRect().height;
-  layerStripWrap.style.height = `${Math.round(compareHeight)}px`;
+  layerStripWrap.style.height = `${getLayerStripTargetHeightPx()}px`;
 }
 
 /** Copy currentTime from `source` onto `target` when they drift (used while seeking). */
@@ -511,7 +567,7 @@ async function bootstrapPreload() {
   updateLoaderProgress(done, total, 0);
 
   try {
-    await preloadAllVideos(files, (completed, downloadedBytes) => {
+    await preloadVideosForEnvironment(files, (completed, downloadedBytes) => {
       done = completed;
       updateLoaderProgress(done, total, downloadedBytes);
     });
