@@ -101,10 +101,14 @@ function syncRangeThumbMetrics() {
 }
 
 const videoColors = {
+  "Arctic Whisper.mp4": ["#9CDBD9", "#FFFFFF"],
   "Solar Breeze.mp4": ["#E94B3C", "#FFFFFF"],
   "Ocean to Meadow.mp4": ["#307FE2", "#54FF9B"],
   "Cotton Candy Cloud.mp4": ["#E7C1D5", "#8EC9E9"],
-  "Blueberry Bubblegum.mp4": ["#6FCAEF", "#8573DD"]
+  "Blueberry Bubblegum.mp4": ["#6FCAEF", "#8573DD"],
+  "Mint Lime.mp4": ["#B6FF43", "#4EC939"],
+  "Pink Citrus.mp4": ["#F78F77", "#E4505A"],
+  "Dusk Glare.mp4": ["#ED9558", "#CE4406"]
 };
 
 function buildVideoUrl(fileName) {
